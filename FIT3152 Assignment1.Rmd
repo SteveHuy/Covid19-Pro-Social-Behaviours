@@ -1,0 +1,802 @@
+---
+title: "FIT3152 Assignment1"
+output:
+  word_document: default
+  pdf_document: default
+date: "2023-04-07"
+---
+
+```{r setup}
+library(dplyr)
+library(ggplot2)
+library(factoextra)
+library(leaps)
+rm(list = ls())
+set.seed(32463448) # XXXXXXXX = your student ID
+cvbase = read.csv("PsyCoronaBaselineExtract.csv")
+cvbase <- cvbase[sample(nrow(cvbase), 40000), ] # 40000 rows
+
+```
+
+## 1. Description Analysis and Pre-Processing (6 Marks)
+
+### a. Describe the data overall, including things such as dimension, data types, distribution of numerical attributes, variety of non-numerical (text) attributes, missing values, and anything else of interest or relevance
+
+**Dimensions**
+
+```{r}
+dim(cvbase)
+```
+
+**Data Types**
+
+```{r}
+str(cvbase)
+```
+
+**Distribution of Numerical Attributes -** 53 Int Attributes
+
+**Variety of Non-numerical Attributes -** 1 chr Attribute
+
+**Missing Values**
+
+```{r}
+sum(is.na(cvbase))
+```
+
+**Other Relevant Points**
+
+```{r}
+unique(cvbase$coded_country)
+```
+
+Looking at these countries there is a country which is completely blank which we will need to wrangle before using
+
+But lets also look at our specific country China
+
+```{r}
+china = cvbase[(cvbase$coded_country %in% "China"),]
+View(china)
+```
+
+As we can see the Trust In Government section is completely blank! Therefore, we have to take this into account when producing our correlations.
+
+### b. Comment on any pre-processing or data manipulation required for the following analysis.
+
+So lets remove that blank country stated earlier
+
+```{r}
+cvbase = subset(cvbase, coded_country!="")
+```
+
+Also lets check which countries are statistically significant and lets delete these countries. The criteria I have chosen is if the country has more than 100 entries therefore, they can more accurately represent their population.
+
+```{r}
+count = cvbase %>%
+  group_by(coded_country) %>%
+  count()
+remove_country = subset(count, count$n <= 100)
+cvbase = cvbase[!(cvbase$coded_country %in% remove_country$coded_country),]
+remove(count, remove_country)
+```
+
+So, we know that there are a lot of missing values in the data therefore, it is important that we wrangle the data before we use it. However, each section of the data needs to be wrangle in different ways. We want to change the null values into the median except for age, gender and education we won't be using them in our analysis
+
+```{r}
+affect = replace(cvbase[1:11], is.na(cvbase[1:11]), 3)
+likelihood = replace(cvbase[12:13], is.na(cvbase[12:13]), 4)
+societal_discontent = replace(cvbase[14:16], is.na(cvbase[14:16]), 0)
+job_security = cvbase[17:20] 
+employ_status = replace(cvbase[21:30], is.na(cvbase[21:30]), 0) 
+disempowerment = replace(cvbase[34:36], is.na(cvbase[34:36]), 0)
+financial_strain = replace(cvbase[31:33], is.na(cvbase[31:33]), 0)
+
+
+life_happy = replace(cvbase[37], is.na(cvbase[37]), 5)
+life_satis = replace(cvbase[38], is.na(cvbase[38]), 3)
+life_mlq = replace(cvbase[39], is.na(cvbase[39]), 0)
+life_satisfaction = cbind(life_happy, life_satis, life_mlq)
+
+
+
+
+covid_norms1 = replace(cvbase[40:41], is.na(cvbase[40:41]), 0)
+covid_norms2 = replace(cvbase[42:44], is.na(cvbase[42:44]), 0)
+covid_norms = cbind(covid_norms1, covid_norms2)
+
+covid_pro_social = replace(cvbase[51:54], is.na(cvbase[51:54]), 0)
+
+
+remove(covid_norms1, covid_norms2, life_happy, life_satis, life_mlq)
+
+country = cvbase[50]
+
+
+cvbase = cbind(affect, likelihood, societal_discontent, 
+               job_security, employ_status, financial_strain,
+               disempowerment, life_satisfaction,
+               covid_norms, country)
+
+
+china = cvbase[(cvbase$coded_country %in% "China"),]
+
+```
+
+We now have a dataframe for all the countries and China without Trust Government
+
+## **2. Focus country vs all other countries as a group. (12 Marks)**
+
+### a. Identify your focus country from the accompanying list (FocusCountryByID.pdf). How do participant responses for your focus country differ from the other countries in the survey as a group?
+
+```{r}
+graph_df = cbind(covid_pro_social, country)
+
+graph_mean = graph_df %>%
+  group_by(coded_country) %>%
+  summarise(across(c(1: 4), list(mean = mean)))
+
+highlight = rep(0,39)
+highlight[7] = 1
+```
+
+#### Help Others Who Suffer from Coronavirus
+
+```{r}
+g1 = ggplot(data = graph_mean, aes(x = c19ProSo01_mean, y = coded_country, fill = highlight)) + 
+  geom_bar(stat = "identity")
+g1 = g1 + ggtitle("Helps Others Who Suffer from Coronavirus")
+g1 = g1 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g1 = g1 + theme(legend.position = "none")  
+g1 = g1 + theme(plot.title = element_text(hjust = 0.5))
+g1 = g1 + geom_vline(xintercept = mean(graph_mean$c19ProSo01_mean), color = "orange")
+g1
+```
+
+#### Make Donations to Help Others that Suffer from Coronavirus
+
+```{r}
+g2 = ggplot(data = graph_mean, aes(x = c19ProSo02_mean, y = coded_country, fill = highlight)) + 
+  geom_bar(stat = "identity")
+g2 = g2 + ggtitle("Make Donations to Help Those Suffering from Coronavirus")
+g2 = g2 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g2 = g2 + theme(legend.position = "none")  
+g2 = g2 + theme(plot.title = element_text(hjust = 0.5))
+g2 = g2 + geom_vline(xintercept = mean(graph_mean$c19ProSo02_mean), color = "orange")
+g2
+```
+
+#### Protect Vulnerable Groups from Coronavirus even at my Own Expense
+
+```{r}
+g3 = ggplot(data = graph_mean, aes(x = c19ProSo03_mean, y = coded_country, fill = highlight)) + 
+  geom_bar(stat = "identity")
+g3 = g3 + ggtitle("Protect Vulnerable Groups from Coronavirus Even at my Own Expense")
+g3 = g3 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g3 = g3 + theme(legend.position = "none")  
+g3 = g3 + theme(plot.title = element_text(hjust = 0.5))
+g3 = g3 + geom_vline(xintercept = mean(graph_mean$c19ProSo03_mean), color = "orange")
+g3
+```
+
+#### Make Personal Sacrifices to Prevent the Spread of Coronavirus
+
+```{r}
+g4 = ggplot(data = graph_mean, aes(x = c19ProSo04_mean, y = coded_country, fill = highlight)) + 
+  geom_bar(stat = "identity")
+g4 = g4 + ggtitle("Make Personal Sacrifices to Prevent the Spread of Coronavirus")
+g4 = g4 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g4 = g4 + theme(legend.position = "none")  
+g4 = g4 + theme(plot.title = element_text(hjust = 0.5))
+g4 = g4 + geom_vline(xintercept = mean(graph_mean$c19ProSo04_mean), color = "orange")
+g4
+
+```
+
+### 
+
+(b) How well do participant responses (attributes) predict pro-social attitudes (c19ProSo01,2,3 and 4) for your focus country? Which attributes seem to be the best predictors? Explain your reasoning.
+
+Lets first isolate our focus country
+
+```{r}
+china_covid_behaviours = cbind(covid_pro_social, country)
+china_covid_behaviours = china_covid_behaviours[(china_covid_behaviours$coded_country %in% "China"),]
+```
+
+We will be using regsubset figures out the best model for a given amount of predictors. Within this assignment I will be using 5 predictors as increasing this number causes lag. The method I have chosen is exhaustive. Exhaustive learning model evaluates all the setups of subsets with 5 predictors and selects the best model.
+
+#### Help Others Who Suffer from Coronavirus
+
+```{r}
+china1 = replace(china, 45, china_covid_behaviours[1])
+colnames(china1)[45] = "c19ProSo01"
+
+
+Best_Subset <-
+    regsubsets(c19ProSo01~.,
+               data =china1,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+china1 = summary(Best_Subset)
+china1 = china1$which[5,]
+china1
+
+```
+
+#### Make Donations to Help Others that Suffer from Coronavirus
+
+```{r}
+china2 = replace(china, 45, china_covid_behaviours[2])
+colnames(china2)[45] = "c19ProSo02"
+
+Best_Subset <-
+    regsubsets(c19ProSo02~.,
+               data =china2,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+china2 = summary(Best_Subset)
+china2 = china2$which[5,]
+china2
+
+```
+
+#### Protect Vulnerable Groups from Coronavirus even at my Own Expense
+
+```{r}
+china3 = replace(china, 45, china_covid_behaviours[3])
+colnames(china3)[45] = "c19ProSo03"
+
+Best_Subset <-
+    regsubsets(c19ProSo03~.,
+               data =china3,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+china3 = summary(Best_Subset)
+china3 = china3$which[5,]
+china3
+```
+
+#### Make Personal Sacrifices to Prevent the Spread of Coronavirus
+
+```{r}
+china4 = replace(china, 45, china_covid_behaviours[4])
+colnames(china4)[45] = "c19ProSo04"
+
+Best_Subset <-
+    regsubsets(c19ProSo04~.,
+               data =china4,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+china4 = summary(Best_Subset)
+china4 = china4$which[5,]
+china4
+```
+
+### **(c) Repeat Question 2(b) for the other countries as a group. Which attributes are the strongest predictors? How do these attributes compare to those of your focus country?**
+
+Lets isolate the other countries
+
+```{r}
+other_countries = cvbase[!(cvbase$coded_country %in% "China"),]
+other_covid_behaviours = cbind(covid_pro_social, country)
+other_covid_behaviours = other_covid_behaviours[!(other_covid_behaviours$coded_country %in% "China"),]
+
+```
+
+So each pro social behaviour will have lots of attributes which are statistically significant therefore, instead of listing each of them out I will just mention which one are the same as our focus country
+
+#### Help Others Who Suffer from Coronavirus
+
+```{r}
+other1 = replace(other_countries, 45, other_covid_behaviours[1])
+colnames(other1)[45] = "c19ProSo01"
+
+Best_Subset <-
+    regsubsets(c19ProSo01~.,
+               data =other1,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+other1 = summary(Best_Subset)
+other1 = other1$which[5,]
+other1
+```
+
+Lets see what important predictors they share with our focus country
+
+```{r}
+china1 * other1
+```
+
+The only attribute they share are [c19NormShould]{.underline}
+
+#### Make Donations to Help Others that Suffer from Coronavirus
+
+```{r}
+other2 = replace(other_countries, 45, other_covid_behaviours[2])
+colnames(other2)[45] = "c19ProSo02"
+
+Best_Subset <-
+    regsubsets(c19ProSo02~.,
+               data =other2,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+other2 = summary(Best_Subset)
+other2 = other2$which[5,]
+other2
+```
+
+Lets see what important predictors they share with our focus country
+
+```{r}
+other2 * china2
+```
+
+They also only share [c19NormShould]{.underline}
+
+#### Protect Vulnerable Groups from Coronavirus even at my Own Expense
+
+```{r}
+other3 = replace(other_countries, 45, other_covid_behaviours[3])
+colnames(other3)[45] = "c19ProSo03"
+
+Best_Subset <-
+    regsubsets(c19ProSo03~.,
+               data =other3,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+other3 = summary(Best_Subset)
+other3 = other3$which[5,]
+other3
+```
+
+Lets see what important attributes they share with our focus country
+
+```{r}
+other3 * china3
+```
+
+They share no important attributes
+
+#### Make Personal Sacrifices to Prevent the Spread of Coronavirus
+
+```{r}
+other4 = replace(other_countries, 45, other_covid_behaviours[4])
+colnames(other4)[45] = "c19ProSo04"
+
+Best_Subset <-
+    regsubsets(c19ProSo04~.,
+               data =other4,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+other4 = summary(Best_Subset)
+other4 = other4$which[5,]
+other4
+```
+
+Lets see what important attribute they share with our focus country
+
+```{r}
+other4 * china4
+```
+
+They share no important attributes
+
+## **3. Focus country vs cluster of similar countries. (10 Marks).**
+
+### **(a) Using several social, economic, health, political or other indicators, identify between 3 and 7 countries (in the baseline data) that are similar to your focus country using clustering. Van Lissa (2022) refers to several indicators you might consider, among others. Some of these are listed in the references, but these are not exhaustive. State the indicators used and describe how you calculated/identified similar countries. Copy and paste the table of values you used for your clustering into your report as an Appendix**
+
+Referring to the data Van Lissa and colleagues in 2022 which identified the most important predictors in COVID-19 infection prevention during the early phases of the pandemic. The most important predictors for infection prevention are [c19NormShould]{.underline} and [c19IsStrict]{.underline}, you should self-isolate and engage in social distancing and are the rules strict in response to covid respectively. Therefore, we will look at which countries are similar to China in those attributes.
+
+Furthermore, I'll look at [fail01]{.underline}( Not a lot is done for people like me in this country), [PLRAC19]{.underline} (How likely do you think you'll get covid) and [PFS01]{.underline} (Are you financially strained).
+
+Let's make the cluster data
+
+```{r}
+cluster_data = cbind(country, covid_norms[c(1,3)], disempowerment[1], likelihood[1], financial_strain[1], life_satisfaction[1])
+
+cluster_mean = cluster_data %>%
+  group_by(coded_country) %>%
+  summarise(across(c(2: 6), list(mean = mean))) #without SD
+
+cluster_scale = scale(cluster_mean[2:6])
+cluster_data = dist(cluster_scale)
+```
+
+Let's first calculate how many clusters we want
+
+```{r}
+fviz_nbclust(cluster_scale, kmeans, method = "wss") + labs(subtitle = "Elbow Method")
+```
+
+We will be using 7 clusters
+
+```{r}
+km = kmeans(cluster_mean[2:6], centers = 7, nstart = 75)
+
+fviz_cluster(km, data = cluster_mean[2:6])
+```
+
+we know that the 7 is equal to china so the cluster contains 8, 21, 30, 31 and 39 which equates to Croatia, Malaysia Saudi Arabia, Singapore, and Vietnam
+
+Now let's make a dataframe for this cluster to make the graphs (PUT BELOW)
+
+```{r}
+cluster_countries_names = c("China", "Croatia",  "Malaysia",  "Saudi Arabia", "Singapore", "Vietnam")
+
+pro_social_cluster = cbind(covid_pro_social, country)
+
+pro_social_cluster = pro_social_cluster[(pro_social_cluster$coded_country %in% cluster_countries_names),]
+
+pro_social_cluster_mean = pro_social_cluster %>%
+  group_by(coded_country) %>%
+  summarise(across(c(1: 4), list(mean = mean))) 
+```
+
+Lets first make a graph to see whether or not Van Lissa and Colleagues was right about c19NormShould and c19IsStrict being important predictors with our cluster
+
+```{r}
+check = cbind(covid_norms[c(1,3)], country)
+  
+check = check[(check$coded_country %in% cluster_countries_names),]
+check_mean = check %>%
+  group_by(coded_country) %>%
+  summarise(across(c(1:2),list (mean = mean)))
+
+check_mean = cbind(pro_social_cluster_mean, check_mean)
+check_mean = check_mean[,-c(1)]
+
+```
+
+Now lets make those graphs
+
+```{r}
+checkg = ggplot(check_mean, aes(x = c19NormShould_mean, y = c19IsStrict_mean)) + geom_point(aes(shape = coded_country)) 
+checkg = checkg + geom_smooth(method=lm, formula = y ~ x)
+checkg
+```
+
+We can see that within our cluster c19NormShould has a negative correlation with c19IsStrict
+
+```{r}
+checkg = ggplot(check_mean, aes(x = c19ProSo01_mean, y = c19IsStrict_mean + c19NormShould_mean)) + geom_point(aes(shape = coded_country)) 
+checkg = checkg + geom_smooth(method=lm, formula = y ~ x)
+checkg
+```
+
+```{r}
+checkg = ggplot(check_mean, aes(x = c19ProSo02_mean, y = c19IsStrict_mean + c19NormShould_mean)) + geom_point(aes(shape = coded_country)) 
+checkg = checkg + geom_smooth(method=lm, formula = y ~ x)
+checkg
+```
+
+```{r}
+checkg = ggplot(check_mean, aes(x = c19ProSo03_mean, y = c19IsStrict_mean + c19NormShould_mean)) + geom_point(aes(shape = coded_country)) 
+checkg = checkg + geom_smooth(method=lm, formula = y ~ x)
+checkg
+```
+
+```{r}
+checkg = ggplot(check_mean, aes(x = c19ProSo04_mean, y = c19IsStrict_mean + c19NormShould_mean)) + geom_point(aes(shape = coded_country)) 
+checkg = checkg + geom_smooth(method=lm, formula = y ~ x)
+checkg
+```
+
+#### Help Others Who Suffer from Coronavirus
+
+```{r}
+g1 = ggplot(data = pro_social_cluster_mean, 
+            aes(x = c19ProSo01_mean, y = coded_country)) + 
+  geom_bar(stat = "identity")
+g1 = g1 + ggtitle("Helps Others Who Suffer from Coronavirus")
+g1 = g1 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g1 = g1 + theme(plot.title = element_text(hjust = 0.5))
+g1 = g1 + geom_vline(aes(xintercept = mean(graph_mean$c19ProSo01_mean), color = "Average_Country_Mean"),
+                     size=1)
+g1 = g1 + geom_vline(aes(xintercept = mean(pro_social_cluster_mean$c19ProSo01_mean), color = "Average_Country_Cluster_Mean"),
+                     size=1)
+
+g1 = g1 + scale_color_manual(name = "statistics", values = c(Average_Country_Mean = "orange", Average_Country_Cluster_Mean = "blue"))
+
+
+g1
+```
+
+#### Make Donations to Help Others that Suffer from Coronavirus
+
+```{r}
+g2 = ggplot(data = pro_social_cluster_mean, 
+            aes(x = c19ProSo02_mean, y = coded_country)) + 
+  geom_bar(stat = "identity")
+g2 = g2 + ggtitle("Make Donations to Help Those Suffering from Coronavirus")
+g2 = g2 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g2 = g2 + theme(plot.title = element_text(hjust = 0.5))
+g2 = g2 + geom_vline(aes(xintercept = mean(graph_mean$c19ProSo02_mean), color = "Average_Country_Mean"),
+                     size=1)
+g2 = g2 + geom_vline(aes(xintercept = mean(pro_social_cluster_mean$c19ProSo02_mean), color = "Average_Country_Cluster_Mean"),
+                     size=1)
+
+g2 = g2 + scale_color_manual(name = "statistics", values = c(Average_Country_Mean = "orange", Average_Country_Cluster_Mean = "blue"))
+
+
+g2
+```
+
+#### Protect Vulnerable Groups from Coronavirus even at my Own Expense
+
+```{r}
+g3 = ggplot(data = pro_social_cluster_mean, 
+            aes(x = c19ProSo03_mean, y = coded_country)) + 
+  geom_bar(stat = "identity")
+g3 = g3 + ggtitle("Protect Vulnerable Groups from Coronavirus Even at my Own Expense")
+g3 = g3 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g3 = g3 + theme(plot.title = element_text(hjust = 0.5))
+g3 = g3 + geom_vline(aes(xintercept = mean(graph_mean$c19ProSo03_mean), color = "Average_Country_Mean"),
+                     size=1)
+g3 = g3 + geom_vline(aes(xintercept = mean(pro_social_cluster_mean$c19ProSo03_mean), color = "Average_Country_Cluster_Mean"),
+                     size=1)
+
+g3 = g3 + scale_color_manual(name = "statistics", values = c(Average_Country_Mean = "orange", Average_Country_Cluster_Mean = "blue"))
+
+
+g3
+```
+
+#### Make Personal Sacrifices to Prevent the Spread of Coronavirus
+
+```{r}
+g4 = ggplot(data = pro_social_cluster_mean, 
+            aes(x = c19ProSo04_mean, y = coded_country)) + 
+  geom_bar(stat = "identity")
+g4 = g4 + ggtitle("Make Personal Sacrifices to Prevent the Spread of Coronavirus")
+g4 = g4 + xlab("Average Score from -2 (Strongly Disagree) to 2 (Strongly Agree)")+ 
+  ylab("Country")
+g4 = g4 + theme(plot.title = element_text(hjust = 0.5))
+g4 = g4 + geom_vline(aes(xintercept = mean(graph_mean$c19ProSo04_mean), color = "Average_Country_Mean"),
+                     size=1)
+g4 = g4 + geom_vline(aes(xintercept = mean(pro_social_cluster_mean$c19ProSo04_mean), color = "Average_Country_Cluster_Mean"),
+                     size=1)
+
+g4 = g4 + scale_color_manual(name = "statistics", values = c(Average_Country_Mean = "orange", Average_Country_Cluster_Mean = "blue"))
+
+
+g4
+```
+
+### 
+
+**(b) How well do participant responses predict pro-social attitudes (c19ProSo01,2,3 and 4) for this cluster of similar countries? Which attributes are the strongest predictors? How do these attributes compare to those of your focus country? Comment on the similarity and/or difference between your results for this question and Question 2(c). That is, does the group of all other countries 2(c), or the cluster of similar countries 3(b) give a better match to the important attributes for predicting pro-social attitudes in your focus country? Discuss.**
+
+Let's make the dataframe again
+
+```{r}
+cluster = cvbase[(cvbase$coded_country %in% cluster_countries_names),]
+
+pro_social_cluster = cbind(covid_pro_social, country)
+
+pro_social_cluster = pro_social_cluster[(pro_social_cluster$coded_country %in% cluster_countries_names),]
+
+
+```
+
+### Help Others Who Suffer from Coronavirus
+
+```{r}
+
+cluster1 = replace(cluster, 45, pro_social_cluster[1])
+colnames(cluster1)[45] = "c19ProSo01"
+
+Best_Subset <-
+    regsubsets(c19ProSo01~.,
+               data =cluster1,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+cluster1 = summary(Best_Subset)
+cluster1 = cluster1$which[5,]
+cluster1
+```
+
+**Let's now compare this to all countries**
+
+```{r}
+cluster1 * other1
+```
+
+They share important predictors in [c19IsOrg]{.underline}, [c19NormShould]{.underline} and [MLQ]{.underline}
+
+**Lets do the focus country china**
+
+```{r}
+cluster1 * china1
+```
+
+Whilst the focus country china shares [c19NormShould]{.underline}
+
+They all share [c19NormShould]{.underline}
+
+#### Make Donations to Help Others that Suffer from Coronavirus
+
+```{r}
+cluster2 = replace(cluster, 45, pro_social_cluster[2])
+colnames(cluster2)[45] = "c19ProSo02"
+
+Best_Subset <-
+    regsubsets(c19ProSo02~.,
+               data =cluster2,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+cluster2 = summary(Best_Subset)
+cluster2 = cluster2$which[5,]
+cluster2
+```
+
+**Let's now compare this to all countries**
+
+```{r}
+cluster2 * other2
+```
+
+They share [c19NormShould]{.underline}
+
+**Lets do the focus country china**
+
+```{r}
+cluster2 * china2
+```
+
+They share the important predictors [disc03]{.underline} and [c19NormShould]{.underline}
+
+They all share [c19NormShould]{.underline}
+
+### Protect Vulnerable Groups from Coronavirus even at my Own Expense
+
+```{r}
+cluster3 = replace(cluster, 45, pro_social_cluster[3])
+colnames(cluster3)[45] = "c19ProSo03"
+
+Best_Subset <-
+    regsubsets(c19ProSo03~.,
+               data =cluster3,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+cluster3 = summary(Best_Subset)
+cluster3 = cluster3$which[5,]
+cluster3
+```
+
+**Let's now compare this to all countries**
+
+```{r}
+cluster3 * other3
+```
+
+They share important predictors in [c19IsOrg]{.underline}, [c19NormShould]{.underline} and [affInsp]{.underline}
+
+**Lets do the focus country china**
+
+```{r}
+cluster3 * china3
+```
+
+Whilst the focus country china shares [MLQ]{.underline} and [c19NormDo]{.underline}
+
+They don't all share any important attributes
+
+### Make Personal Sacrifices to Prevent the Spread of Coronavirus
+
+```{r}
+cluster4 = replace(cluster, 45, pro_social_cluster[4])
+colnames(cluster4)[45] = "c19ProSo04"
+
+Best_Subset <-
+    regsubsets(c19ProSo04~.,
+               data =cluster4,
+               nbest = 1,      # 1 best model for each number of predictors
+               nvmax = 5,    # top 5 predictors
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive")
+
+cluster4 = summary(Best_Subset)
+cluster4 = cluster4$which[5,]
+cluster4
+```
+
+**Let's now compare this to all countries**
+
+```{r}
+cluster4 * other4
+```
+
+They share important predictors in [c19NormShould]{.underline} and [fail01]{.underline}
+
+**Lets do the focus country china**
+
+```{r}
+cluster4 * china4
+```
+
+Whilst the focus country china shares [MLQ]{.underline} and [disc03]{.underline}
+
+They all don't share any important attributes
+
+So they are both equally
+
+**Let's see if the other countries or the cluster share more important attributes**
+
+[Help Others who Suffer from Coronavirus]{.underline}
+
+```{r}
+sum(cluster1 * china1)
+sum(china1 * other1)
+```
+
+They share the same amount
+
+[Make Donations to help Others that Suffer from Coronavirus]{.underline}
+
+```{r}
+sum(cluster2 * china2)
+sum(china2 * other2)
+
+```
+
+Cluster shares more important predictors
+
+[Protect Vulnerable Groups from Coronavirus even at my Own Expense]{.underline}
+
+```{r}
+sum(cluster3 * china3)
+sum(china3 * other3)
+```
+
+Cluster shares more important predictor
+
+[Make Personal Sacrifices to Prevent the Spread of Coronavirus]{.underline}
+
+```{r}
+sum(cluster4 * china4)
+sum(china4 * other4)
+```
+
+Cluster shares more important predictors
+
+So overall, cluster shares more important predictors than the other countries
